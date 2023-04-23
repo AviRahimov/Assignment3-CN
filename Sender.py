@@ -6,7 +6,7 @@ receiver_ip = '127.0.0.1'
 receiver_port = 5005
 
 # Define the path to the file to be sent
-file_path = 'file.txt'
+file_path = 'vector.txt'
 
 # Open the file and read its contents
 with open(file_path, 'rb') as f:
@@ -31,7 +31,7 @@ else:
     print('Authentication failed')
 
 # Change the CC algorithm
-s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'cubic')
+s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'e2e')
 
 # Send the second half of the file
 s.sendall(file_data[first_half_size:])
@@ -44,7 +44,7 @@ while True:
         s.sendall(b'SEND AGAIN')
 
         # Change the CC algorithm back to the default
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'reno')
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'reno')
 
         # Send the first half of the file again
         s.sendall(file_data[:first_half_size])
@@ -59,7 +59,7 @@ while True:
             print('Authentication failed')
 
         # Change the CC algorithm
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'cubic')
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'e2e')
 
         # Send the second half of the file again
         s.sendall(file_data[first_half_size:])
