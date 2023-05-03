@@ -1,74 +1,66 @@
 import socket
-import os
+import time
+# The ID od the submitters
+FIRST_ID = 3147
+SECOND_ID = 267
+# xor operation between the id's to send an authentication between the sender and the receiver
+xor_operation = str(FIRST_ID ^ SECOND_ID)
+# Define the IP address and port of the receiver
+IP = 'localhost'  # replace with the receiver's IP address
+PORT = 1234  # replace with the receiver's port number
 
-# Define the IP address and Port number of the Receiver
-receiver_ip = '127.0.0.1'
-receiver_port = 5005
+# Define the filename and read the file
+FILENAME = 'testing_file.txt'  # replace with the name of the file to be sent
+with open(FILENAME, 'rb') as file:
+    file_data = file.read()
 
-# Define the path to the file to be sent
-file_path = 'vector.txt'
+# Split the file into two parts (first half and second half)
+file_size = len(file_data)
+half_size = file_size // 2
+first_half = file_data[:half_size]
+second_half = file_data[half_size:]
 
-# Open the file and read its contents
-with open(file_path, 'rb') as f:
-    file_data = f.read()
-
-# Create a TCP socket and connect to the Receiver
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((receiver_ip, receiver_port))
-
-# Send the first half of the file
-file_size = os.path.getsize(file_path)
-first_half_size = file_size // 2
-s.sendall(file_data[:first_half_size])
-
-# Wait for authentication from the Receiver
-response = s.recv(1024)
-
-# Check for authentication
-if response == b'AUTHENTICATED':
-    print('Authentication successful')
-else:
-    print('Authentication failed')
-
-# Change the CC algorithm
-s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'e2e')
-
-# Send the second half of the file
-s.sendall(file_data[first_half_size:])
-
-# Ask the user if they want to send the file again
 while True:
-    answer = input('Do you want to send the file again? (Y/N) ')
-    if answer.upper() == 'Y':
-        # Notify the Receiver
-        s.sendall(b'SEND AGAIN')
+    # create a TCP socket and connect to the receiver with specified IP and PORT number
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((IP, PORT))
 
-        # Change the CC algorithm back to the default
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'reno')
+    # Send the first half of the file with Reno algorithm and after that closing the socket
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'reno')
+    s.sendall(first_half)
+    s.close()
 
-        # Send the first half of the file again
-        s.sendall(file_data[:first_half_size])
+    # connect again and check if the connection is stable with the authentication message
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((IP, PORT))
+    authentication = s.recv(1024).decode()
 
-        # Wait for authentication from the Receiver
-        response = s.recv(1024)
+    # if the authentication succeed we create the socket again due to the closing of the receiver server and connect
+    if authentication == xor_operation:
+        print("authentication succeed")
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((IP, PORT))
+        # Send the second half of the file with Cubic algorithm and after that closing the socket
+        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'cubic')
+        s.sendall(second_half)
+        s.close()
+    # if the authentication failed we close the socket and break the loop
+    else:
+        s.close()
+        print("Receiver doesn't send an authentication message")
+        break
 
-        # Check for authentication
-        if response == b'AUTHENTICATED':
-            print('Authentication successful')
-        else:
-            print('Authentication failed')
-
-        # Change the CC algorithm
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'e2e')
-
-        # Send the second half of the file again
-        s.sendall(file_data[first_half_size:])
-    elif answer.upper() == 'N':
-        # Say bye to the Receiver
-        s.sendall(b'EXIT')
-
-        # Close the TCP connection
+    send_again = input('Do you want to send the file again? (y/n): ')
+    if send_again.lower() != 'y':
+        print("Stop sending files")
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((IP, PORT))
+        s.sendall("done_sending_all".encode())
         s.close()
         break
     else:
-        print('Invalid answer, please try again.')
+        print("Sending file again!")
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((IP, PORT))
+        s.sendall("keep_sending".encode())
+        s.close()

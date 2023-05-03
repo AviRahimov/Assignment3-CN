@@ -1,84 +1,91 @@
 import socket
 import time
 
-# Define the IP address and port number
-SERVER_IP = '127.0.0.1'
-SERVER_PORT = 5005
+# Define the IP address and port to listen on
+IP = 'localhost'  # listen on all available network interfaces
+PORT = 1234  # choose a port number to listen on
+FIRST_ID = 3147
+SECOND_ID = 267
+xor_operation = str(FIRST_ID ^ SECOND_ID).encode()
 
-start_time = time.time()
-# Create a TCP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+buffer_size = 4096
+times_list_first_part = []
+times_list_second_part = []
+# Create a TCP socket and bind it to the IP address and port
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    s.bind((IP, PORT))
 
-# Bind the socket to a specific IP address and port number
-sock.bind((SERVER_IP, SERVER_PORT))
+    # Listen for incoming connections
+    s.listen()
 
-# Listen for incoming connections
-sock.listen()
+    print(f"Receiver listening on {IP}:{PORT}")
 
-while True:
-    # Wait for a connection
-    print('Waiting for a connection...')
-    conn, addr = sock.accept()
+    while True:
+        # Accept a new connection
+        conn, addr = s.accept()
+        with conn:
+            print(f"Connected by {addr}")
 
-    # Print the address of the client that just connected
-    print('Connection from:', addr)
+            # Set the congestion control algorithm to Reno for the first half
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'reno')
 
-    # Receive the first part of the file
-    first_part = conn.recv(1024)
+            # Receive the first half of the file
+            start_time = time.time()
+            data = conn.recv(buffer_size)
+            print("Receiving the first half of the file from the sender")
+            while data:
+                data = conn.recv(buffer_size)
+            end_time = time.time()
+            print("Done received the first half")
+            # Calculate the time taken to receive the first half of the file
+            first_half_time = end_time - start_time
+            times_list_first_part.append(first_half_time)
 
-    # Send back authentication to the sender
-    conn.send(b'AUTHENTICATED')
+            # connect again to the sender and send an authentication message and after that closing the connection
+            conn, addr = s.accept()
+            print("Sending authentication")
+            conn.sendall(xor_operation)
+            conn.close()
 
-    # Change the congestion control algorithm
-    conn.setsockopt(socket.IPPROTO_TCP, 71, 2)
+            conn, addr = s.accept()
+            # Set the congestion control algorithm to Cubic for the second half
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'cubic')
 
-    # Receive the second part of the file
-    second_part = conn.recv(1024)
+            # Receive the second half of the file
+            start_time = time.time()
+            data = conn.recv(buffer_size)
+            print("Receiving the second half of the file from the sender")
+            while data:
+                data = conn.recv(buffer_size)
+            end_time = time.time()
+            print("Done received the second half")
+            # Calculate the time taken to receive the second half of the file
+            second_half_time = end_time - start_time
+            times_list_second_part.append(second_half_time)
 
-    # Measure the time it took to receive the entire file
-    elapsed_time = time.time() - start_time
-
-    # Print the time it took to receive each part of the file
-    print(f'Time to receive first part: {time.time() - start_time:.5f} seconds')
-    print(f'Time to receive second part: {time.time() - start_time:.5f} seconds')
-
-    # Check for a SEND AGAIN message from the sender
-    send_again_msg = conn.recv(1024)
-    if send_again_msg == b'SEND AGAIN':
-        # Change the congestion control algorithm back to the default
-        conn.setsockopt(socket.IPPROTO_TCP, 71, 1)
-
-        # Receive the first part of the file again
-        first_part = conn.recv(1024)
-
-        # Send back authentication to the sender
-        conn.send(b'AUTHENTICATED')
-
-        # Change the congestion control algorithm
-        conn.setsockopt(socket.IPPROTO_TCP, 71, 2)
-
-        # Receive the second part of the file again
-        second_part = conn.recv(1024)
-
-        # Measure the time it took to receive the entire file
-        elapsed_time = time.time() - start_time
-
-        # Print the time it took to receive each part of the file
-        print(f'Time to receive first part: {time.time() - start_time:.5f} seconds')
-        print(f'Time to receive second part: {time.time() - start_time:.5f} seconds')
-
-    # Check for an EXIT message from the sender
-    exit_msg = conn.recv(1024).decode()
-    if exit_msg == 'EXIT':
-        # Calculate the average time it took to receive each part of the file
-        avg_first_part_time = (time.time() - start_time) / 2.0
-        avg_second_part_time = (time.time() - start_time) / 2.0
-        print(f'Average time to receive first part: {avg_first_part_time:.5f} seconds')
-        print(f'Average time to receive second part: {avg_second_part_time:.5f} seconds')
-
-        # Close the connection
-        conn.close()
-        break
-
-    # Close the connection
-    conn.close()
+            conn, addr = s.accept()
+            print("Waiting for the sender to send more files or to close the connection...")
+            is_done = conn.recv(1024).decode()
+            if is_done == "done_sending_all":
+                print("-----------------------------------------------------------------------------------")
+                print("Connection closed, calculating times: ")
+                # Calculate the total time taken to receive the file
+                avg_time_first_part = sum(times_list_first_part) / len(times_list_first_part)
+                avg_time_second_part = sum(times_list_second_part) / len(times_list_second_part)
+                # printing the times without average
+                print("Sending times for RENO CC algorithm: ")
+                for i in range(len(times_list_first_part)):
+                    print(f"Iteration number: {i+1}, time: {times_list_first_part[i]}")
+                print("-----------------------------------------------------------------------------------")
+                print("Sending times for CUBIC CC algorithm: ")
+                for i in range(len(times_list_first_part)):
+                    print(f"Iteration number: {i+1}, time: {times_list_second_part[i]}")
+                print("-----------------------------------------------------------------------------------")
+                # Print the time taken to receive the file
+                print(f"first half files by RENO algorithm received in average time of {avg_time_first_part} seconds")
+                print(f"second half files by CUBIC algorithm received in average time of {avg_time_second_part} seconds")
+                break
+            else:
+                print("Receiving more files!")
+                print("-----------------------------------------------------------------------------------")
+                conn.close()
