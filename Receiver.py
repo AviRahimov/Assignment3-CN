@@ -1,84 +1,88 @@
 import socket
 import time
 
-# Define the IP address and port number
-SERVER_IP = '127.0.0.1'
-SERVER_PORT = 5005
+def receive_file():
+    # create TCP connection and bind it to the IP address and port
+    s = socket.socket()
+    # Define the IP address and port to listen on
+    # listen on all available network interfaces
+    host = 'localhost'
+    # port number to listen on
+    port = 12345
+    first_id = 3147
+    second_id = 267
+    xor_operation = str(first_id ^ second_id).encode()
+    buffer_size = 4096
+    times_list_first_part = []
+    times_list_second_part = []
+    s.bind((host, port))
+    # Listen for incoming connections
+    s.listen(1)
+    # Accept a new connection
+    conn, addr = s.accept()
+    # Set the congestion control algorithm to Reno for the first half
+    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'reno')
+    # receive first part of file
+    start_time = time.time()
+    data = b""
+    print("Receiving the first half of the file from the sender")
+    while len(data) < buffer_size*buffer_size:
+        packet = conn.recv(buffer_size)
+        if not packet:
+            break
+        data += packet
+    print("Done received the first half")
+    end_time = time.time()
 
-start_time = time.time()
-# Create a TCP socket
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # measure time to receive first part of file
+    first_part_time = end_time - start_time
+    times_list_first_part.append(first_part_time)
 
-# Bind the socket to a specific IP address and port number
-sock.bind((SERVER_IP, SERVER_PORT))
+    print("Sending authentication")
+    conn.sendall(xor_operation)
 
-# Listen for incoming connections
-sock.listen()
+    # Set the congestion control algorithm to Cubic for the second half
+    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'cubic')
 
-while True:
-    # Wait for a connection
-    print('Waiting for a connection...')
-    conn, addr = sock.accept()
+    # receive second part of file
+    start_time = time.time()
+    data = b""
+    print("Receiving the second half of the file from the sender")
+    while len(data) < buffer_size*buffer_size:
+        packet = conn.recv(buffer_size)
+        if not packet:
+            break
+        data += packet
+    print("Done received the second half")
+    end_time = time.time()
 
-    # Print the address of the client that just connected
-    print('Connection from:', addr)
+    # measure time to receive second part of file
+    second_part_time = end_time - start_time
+    times_list_second_part.append(second_part_time)
 
-    # Receive the first part of the file
-    first_part = conn.recv(1024)
-
-    # Send back authentication to the sender
-    conn.send(b'AUTHENTICATED')
-
-    # Change the congestion control algorithm
-    conn.setsockopt(socket.IPPROTO_TCP, 71, 2)
-
-    # Receive the second part of the file
-    second_part = conn.recv(1024)
-
-    # Measure the time it took to receive the entire file
-    elapsed_time = time.time() - start_time
-
-    # Print the time it took to receive each part of the file
-    print(f'Time to receive first part: {time.time() - start_time:.5f} seconds')
-    print(f'Time to receive second part: {time.time() - start_time:.5f} seconds')
-
-    # Check for a SEND AGAIN message from the sender
-    send_again_msg = conn.recv(1024)
-    if send_again_msg == b'SEND AGAIN':
-        # Change the congestion control algorithm back to the default
-        conn.setsockopt(socket.IPPROTO_TCP, 71, 1)
-
-        # Receive the first part of the file again
-        first_part = conn.recv(1024)
-
-        # Send back authentication to the sender
-        conn.send(b'AUTHENTICATED')
-
-        # Change the congestion control algorithm
-        conn.setsockopt(socket.IPPROTO_TCP, 71, 2)
-
-        # Receive the second part of the file again
-        second_part = conn.recv(1024)
-
-        # Measure the time it took to receive the entire file
-        elapsed_time = time.time() - start_time
-
-        # Print the time it took to receive each part of the file
-        print(f'Time to receive first part: {time.time() - start_time:.5f} seconds')
-        print(f'Time to receive second part: {time.time() - start_time:.5f} seconds')
-
-    # Check for an EXIT message from the sender
-    exit_msg = conn.recv(1024).decode()
-    if exit_msg == 'EXIT':
-        # Calculate the average time it took to receive each part of the file
-        avg_first_part_time = (time.time() - start_time) / 2.0
-        avg_second_part_time = (time.time() - start_time) / 2.0
-        print(f'Average time to receive first part: {avg_first_part_time:.5f} seconds')
-        print(f'Average time to receive second part: {avg_second_part_time:.5f} seconds')
-
-        # Close the connection
+    print("Waiting for the sender to send more files or to close the connection...")
+    # check if sender wants to send file again or exit
+    msg = conn.recv(buffer_size).decode()
+    if msg == "Send Again":
+        print("Receiving more files!")
+        print("-----------------------------------------------------------------------------------")
+        receive_file()
+    elif msg == "Exit":
+        print("-----------------------------------------------------------------------------------")
+        print("Calculating times: ")
+        # calculate average time
+        avg_first_part_time = first_part_time
+        avg_second_part_time = second_part_time
+        total_time = avg_first_part_time + avg_second_part_time
+        print("Average time to receive first part of file: ", avg_first_part_time)
+        print("Average time to receive second part of file: ", avg_second_part_time)
+        print("Total time taken to receive file: ", total_time)
+        # close TCP connection
+        conn.sendall("Goodbye".encode())
         conn.close()
-        break
+    else:
+        # if message is not recognized, close TCP connection
+        conn.sendall("Invalid Message".encode())
+        conn.close()
 
-    # Close the connection
-    conn.close()
+        receive_file()

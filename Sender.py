@@ -1,74 +1,50 @@
 import socket
-import os
+import time
 
-# Define the IP address and Port number of the Receiver
-receiver_ip = '127.0.0.1'
-receiver_port = 5005
 
-# Define the path to the file to be sent
-file_path = 'vector.txt'
+def send_file():
+    file_name = 'testing_file.txt'
+    with open(file_name, "rb") as file:
+        file_data = file.read()
 
-# Open the file and read its contents
-with open(file_path, 'rb') as f:
-    file_data = f.read()
+    # create TCP connection
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    first_id = 3147
+    second_id = 267
+    # xor operation between the id's to send an authentication between the sender and the receiver
+    xor_operation = str(first_id ^ second_id)
+    host = "127.0.0.1"
+    port = 12345
+    s.connect((host, port))
 
-# Create a TCP socket and connect to the Receiver
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((receiver_ip, receiver_port))
+    # Send the first half of the file with Reno algorithm and after that closing the socket
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'reno')
+    # send first part of file
+    s.sendall(file_data[:len(file_data) // 2])
 
-# Send the first half of the file
-file_size = os.path.getsize(file_path)
-first_half_size = file_size // 2
-s.sendall(file_data[:first_half_size])
-
-# Wait for authentication from the Receiver
-response = s.recv(1024)
-
-# Check for authentication
-if response == b'AUTHENTICATED':
-    print('Authentication successful')
-else:
-    print('Authentication failed')
-
-# Change the CC algorithm
-s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'e2e')
-
-# Send the second half of the file
-s.sendall(file_data[first_half_size:])
-
-# Ask the user if they want to send the file again
-while True:
-    answer = input('Do you want to send the file again? (Y/N) ')
-    if answer.upper() == 'Y':
-        # Notify the Receiver
-        s.sendall(b'SEND AGAIN')
-
-        # Change the CC algorithm back to the default
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'reno')
-
-        # Send the first half of the file again
-        s.sendall(file_data[:first_half_size])
-
-        # Wait for authentication from the Receiver
-        response = s.recv(1024)
-
-        # Check for authentication
-        if response == b'AUTHENTICATED':
-            print('Authentication successful')
-        else:
-            print('Authentication failed')
-
-        # Change the CC algorithm
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION_ALGORITHM, b'e2e')
-
-        # Send the second half of the file again
-        s.sendall(file_data[first_half_size:])
-    elif answer.upper() == 'N':
-        # Say bye to the Receiver
-        s.sendall(b'EXIT')
-
-        # Close the TCP connection
-        s.close()
-        break
+    # receive authentication response
+    auth_response = s.recv(1024).decode()
+    if auth_response == xor_operation:
+        print("Authentication Successful")
     else:
-        print('Invalid answer, please try again.')
+        print("Authentication Failed")
+        return
+
+    # Send the second half of the file with Cubic algorithm and after that closing the socket
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_CONGESTION, b'cubic')
+    # send second part of file
+    s.sendall(file_data[len(file_data) // 2:])
+
+    # prompt user to send file again
+    send_again = input("Send file again? (y/n): ")
+    if send_again.lower() == "y":
+        s.sendall("Send Again".encode())
+        # change back the congestion control algorithm
+        # ...
+        send_file()
+    else:
+        s.sendall("Exit".encode())
+        s.close()
+
+
+send_file()
