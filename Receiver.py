@@ -9,7 +9,7 @@ HOST = 'localhost'
 PORT = 12345
 # xor operation between the id's to send an authentication between the sender and the receiver
 XOR_OPERATION = str(FIRST_ID ^ SECOND_ID).encode()
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 4096
 times_list_first_part = []
 times_list_second_part = []
 file_size = os.path.getsize("testing_file.txt")
@@ -34,7 +34,7 @@ def receive_file():
         print("Receiving the first half of the file from the sender")
         data = b""
         while len(data) < half_size:
-            packet = conn.recv(1024)
+            packet = conn.recv(BUFFER_SIZE)
             if not packet:
                 break
             data += packet
@@ -56,7 +56,7 @@ def receive_file():
         print("Receiving the second half of the file from the sender")
         data = b""
         while len(data) < half_size:
-            packet = conn.recv(1024)
+            packet = conn.recv(BUFFER_SIZE)
             if not packet:
                 break
             data += packet
